@@ -1,9 +1,13 @@
 package org.es4j.persistence.sql;
 
+import java.io.IOException;
 import org.es4j.dotnet.GC;
 import org.es4j.dotnet.HttpContext;
 import org.es4j.dotnet.IDisposable;
-import  org.es4j.dotnet.Thread;
+import org.es4j.exceptions.ArgumentException;
+import org.es4j.util.StringExt;
+import org.es4j.util.logging.ILog;
+import org.es4j.util.logging.LogFactory;
 
 //using System;
 //using System.Threading;
@@ -17,17 +21,18 @@ public class ThreadScope<T> implements IDisposable {
     private final String      threadKey;
     private final T           current;
     private final boolean     rootScope;
-    private       boolean     disposed;
+    private       boolean     disposed;   
 
-    public ThreadScope(String key, Func<T> factory) {
+    public ThreadScope(String key, FactoryDelegate<T> factory) {
         
-        this.threadKey = typeof(ThreadScope<T>).Name + ":[{0}]".formatWith(key ?? string.Empty);
+      //this.threadKey = typeof(ThreadScope<T>).Name + ":[{0}]".formatWith(key ?? string.Empty);
+        this.threadKey = StringExt.formatWith("typeof(ThreadScope<T>).Name" + ":[{0}]", key!=null?key:"");
 
         T parent = this.load();
         this.rootScope = parent == null;
         this.logger.debug(Messages.openingThreadScope(), this.threadKey, this.rootScope);
 
-        this.current = parent!=null? parent : factory();
+        this.current = parent!=null? parent : factory.getFactory();
 
         if (this.current == null) {
             throw new ArgumentException(Messages.badFactoryResult(), "factory");
@@ -38,6 +43,12 @@ public class ThreadScope<T> implements IDisposable {
         }
     }
 
+    @Override
+    public void close() throws IOException {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+	
+    @Override
     public void dispose() {
         this.dispose(true);
         GC.suppressFinalize(this);
@@ -63,19 +74,25 @@ public class ThreadScope<T> implements IDisposable {
         }
 
         this.logger.verbose(Messages.disposingRootThreadScopeResources());
-        resource.dispose();
+        try {
+            resource.dispose();
+        } catch (Exception ex) {
+            throw new RuntimeException(ex.getMessage());
+        }
     }
 
     private T load() {
         if (this.context != null) {
-            return (T)this.context.Items[this.threadKey];
+            return (T)this.context.getItems().get(this.threadKey);
         }
-        return (T)Thread.getData(Thread.getNamedDataSlot(this.threadKey));
+        T object;
+        object = (T)Thread.getData(Thread.getNamedDataSlot(this.threadKey));
+        return object;
     }
     
     private void store(T value) {
         if (this.context != null) {
-            this.context.Items[this.threadKey] = value;
+            this.context.getItems().put(this.threadKey, value);
         }
         else {
             Thread.setData(Thread.getNamedDataSlot(this.threadKey), value);
@@ -85,5 +102,5 @@ public class ThreadScope<T> implements IDisposable {
     public T getCurrent() {
         return this.current;
     }
-	
+
 }

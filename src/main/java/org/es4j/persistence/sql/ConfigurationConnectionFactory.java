@@ -1,15 +1,18 @@
 package org.es4j.persistence.sql;
 
 import org.es4j.dotnet.ConfigurationErrorsException;
+import org.es4j.dotnet.ConfigurationManager;
 import org.es4j.dotnet.ConnectionStringSettings;
 import org.es4j.dotnet.Dictionary;
+import org.es4j.util.Guid;
 import org.es4j.dotnet.IDictionary;
 import org.es4j.dotnet.IDisposable;
 import org.es4j.dotnet.KeyValuePair;
 import org.es4j.dotnet.data.DbProviderFactory;
 import org.es4j.dotnet.data.IDbConnection;
-import org.es4j.util.Guid;
 import org.es4j.util.StringExt;
+import org.es4j.util.logging.ILog;
+import org.es4j.util.logging.LogFactory;
 
 //using System;
 //using System.Collections.Generic;
@@ -50,11 +53,11 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         if (StringExt.isNullOrEmpty(settings.getKey())) {
             throw new ConfigurationErrorsException(Messages.notConnectionsAvailable());
         }
-        return openScope(Guid.getEmpty(), settings.getKey());
+        return openScope(Guid.empty(), settings.getKey());
     }
     
     public static IDisposable openScope(String connectionName) {
-        return openScope(Guid.getEmpty(), connectionName);
+        return openScope(Guid.empty(), connectionName);
     }
     
     public static IDisposable openScope(Guid streamId, String connectionName) {
@@ -66,33 +69,41 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         return this.getConnectionStringSettings(this.masterConnectionName); 
     }
 
+    @Override
     public IDbConnection openMaster(Guid streamId) {
         logger.verbose(Messages.openingMasterConnection(), this.masterConnectionName);
         return this.open(streamId, this.masterConnectionName);
     }
 
+    @Override
     public IDbConnection openReplica(Guid streamId) {
         logger.verbose(Messages.openingReplicaConnection(), this.replicaConnectionName);
         return this.open(streamId, this.replicaConnectionName);
     }
     
     protected IDbConnection open(Guid streamId, String connectionName) {
-        ConnectionStringSettings  setting = this.getSetting(connectionName);
-        String connectionString = this.buildConnectionString(streamId, setting);
-        return new ConnectionScope(connectionString, () => this.Open(connectionString, setting));
+        final ConnectionStringSettings  setting = this.getSetting(connectionName);
+        final String connectionString = this.buildConnectionString(streamId, setting);
+        return new ConnectionScope(connectionString, new FactoryDelegate<IDbConnection>() {
+
+            @Override
+            public IDbConnection getFactory() {
+                return open(connectionString, setting);
+            }
+        });
     }
     
     protected IDbConnection open(String connectionString, ConnectionStringSettings setting) {
         DbProviderFactory factory = this.getFactory(setting);
-        var connection = factory.createConnection();
+        IDbConnection connection = factory.createConnection();
         if (connection == null) {
             throw new ConfigurationErrorsException(Messages.badConnectionName());
         }
-        connection.ConnectionString = connectionString;
+        connection.setConnectionString(connectionString);
 
         try {
             logger.verbose(Messages.openingConnection(), setting.getName());
-            connection.Open();
+            connection.open();
         }
         catch (Exception e) {
             logger.warn(Messages.openFailed(), setting.getName());
@@ -108,9 +119,6 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
                 setting = cachedSettings.get(connectionName);
                 return setting;
             }
-            //if (cachedSettings.tryGetValue(connectionName, out setting)) {
-            //    return setting;
-            //}
             setting = this.getConnectionStringSettings(connectionName);
             cachedSettings.put(connectionName, setting);
             return setting;
@@ -131,21 +139,26 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         }
     }
                 
-    protected ConnectionStringSettings getConnectionStringSettings(string connectionName) {
+    protected ConnectionStringSettings getConnectionStringSettings(String connectionName) {
         logger.debug(Messages.discoveringConnectionSettings(), connectionName);
 
-        var settings = ConfigurationManager.getConnectionStrings()
-				.Cast<ConnectionStringSettings>()
-				.FirstOrDefault(x => x.getName() == connectionName);
-
+        Iterable<ConnectionStringSettings> settingsCollection = ConfigurationManager.getConnectionStrings();
+        ConnectionStringSettings settings = null;
+        for(ConnectionStringSettings stngs : settingsCollection) {
+            if(stngs.getName() == connectionName) {
+                settings = stngs;
+                break;
+            }
+        }
         if (settings == null) {
-            throw new ConfigurationErrorsException(Messages.connectionNotFound().formatWith(connectionName));
+            String msg = StringExt.formatWith(Messages.connectionNotFound(), connectionName);
+            throw new ConfigurationErrorsException(msg);
         }
-        if ((settings.getConnectionString()!=null? settings.getConnectionString() : string.Empty).Trim().Length == 0) {
-            throw new ConfigurationErrorsException(Messages.missingConnectionString().formatWith(connectionName));
+        if ((settings.getConnectionString()!=null?settings.getConnectionString() : StringExt.Empty()).trim().length() == 0) {
+            throw new ConfigurationErrorsException(StringExt.formatWith(Messages.missingConnectionString(), connectionName));
         }
-        if ((settings.getProviderName()!=null? settings.getProviderName() : string.Empty).Trim().Length == 0) {
-            throw new ConfigurationErrorsException(Messages.missingProviderName().formatWith(connectionName));
+        if ((settings.getProviderName()!=null? settings.getProviderName() : StringExt.Empty()).trim().length() == 0) {
+            throw new ConfigurationErrorsException(StringExt.formatWith(Messages.missingProviderName(),connectionName));
         }
         return settings;
     }
@@ -157,13 +170,11 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         logger.verbose(Messages.embeddingShardKey(), setting.getName());
         
         return StringExt.formatWith(setting.getConnectionString(), this.computeHashKey(streamId));
-                        
-        //return setting.getConnectionString().formatWith(this.computeHashKey(streamId));
     }
     
     protected String computeHashKey(Guid streamId) {
         // simple sharding scheme which could easily be improved through such techniques
         // as consistent hashing (Amazon Dynamo) or other kinds of sharding.
-        return (this.shards == 0 ? 0 : streamId.toByteArray()[0] % this.shards).toString();
+        return new Integer(this.shards == 0 ? 0 : streamId.toByteArray()[0] % this.shards).toString();
     }
 }

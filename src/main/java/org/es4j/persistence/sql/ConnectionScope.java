@@ -1,61 +1,73 @@
 package org.es4j.persistence.sql;
 
-//using System;
-
+import org.es4j.dotnet.data.ConnectionState;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.dotnet.data.IDbConnection;
 import org.es4j.dotnet.data.IDbTransaction;
+import org.es4j.dotnet.data.IsolationLevel;
 
+//using System;
 //using System.Data;
 
-public class ConnectionScope extends ThreadScope<IDbConnection> implements IDbConnection 
+public class ConnectionScope extends    ThreadScope<IDbConnection> 
+                             implements IDbConnection {
 
-    public ConnectionScope(String connectionName, Func<IDbConnection> factory) {
+    public ConnectionScope(String                         connectionName, 
+                           FactoryDelegate<IDbConnection> factory) {
         super(connectionName, factory);
     }
     
-    IDbTransaction /*IDbConnection.*/beginTransaction() {
+    @Override
+    public IDbTransaction beginTransaction() {
         return this.getCurrent().beginTransaction();
     }
     
-    IDbTransaction /*IDbConnection.*/beginTransaction(IsolationLevel il) {
+    @Override
+    public IDbTransaction beginTransaction(IsolationLevel il) {
         return this.getCurrent().beginTransaction(il);
     }
     
-    void /*IDbConnection.*/close() {
+    @Override
+    public void close() {
         // no-op--let Dispose do the real work.
     }
     
-    void /*IDbConnection.*/changeDatabase(String databaseName) {
+    @Override
+    public void changeDatabase(String databaseName) {
         this.getCurrent().changeDatabase(databaseName);
     }
     
-    IDbCommand /*IDbConnection.*/createCommand() {
+    @Override
+    public IDbCommand createCommand() {
         return this.getCurrent().createCommand();
     }
     
-    void /*IDbConnection.*/open() {
+    @Override
+    public void open() {
         this.getCurrent().open();
     }
-    
-    protected String /*IDbConnection.*/connectionString;
-    {
-			get { return this.Current.ConnectionString; }
-			set { this.Current.ConnectionString = value; }
+
+    @Override
+    public String getConnectionString() {
+        return this.getCurrent().getConnectionString();
     }
-                
-    int IDbConnection.ConnectionTimeout
-    {
-        get { return this.Current.ConnectionTimeout; }
+    @Override
+    public void setConnectionString(String connectionString) {
+        this.getCurrent().setConnectionString(connectionString);
     }
-                
-    String IDbConnection.Database
-    {
-        get { return this.Current.Database; }
+
+    @Override
+    public int getConnectionTimeout() {
+        return this.getCurrent().getConnectionTimeout();
     }
-                
-    ConnectionState IDbConnection.State
-    {
-        get { return this.Current.State; }
+
+    @Override
+    public String getDatabase() {
+        return this.getCurrent().getDatabase();
+    }
+
+    @Override
+    public ConnectionState getState() {
+        return this.getCurrent().getState();
     }
 }

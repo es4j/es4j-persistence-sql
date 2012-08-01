@@ -1,8 +1,10 @@
 package org.es4j.persistence.sql;
 
+import org.es4j.dotnet.ConnectionStringSettings;
 import org.es4j.dotnet.data.TransactionScopeOption;
-import org.es4j.persistence.IPersistenceFactory;
-import org.es4j.persistence.ISerialize;
+import org.es4j.eventstore.api.persistence.IPersistStreams;
+import org.es4j.eventstore.api.persistence.IPersistenceFactory;
+import org.es4j.serialization.api.ISerialize;
 
 //using System;
 //using System.Configuration;
@@ -16,19 +18,25 @@ public class SqlPersistenceFactory implements IPersistenceFactory {
     private final ISqlDialect            dialect;
     private final ISerialize             serializer;
     private final TransactionScopeOption scopeOption;
+    
+    protected int pageSize; // { get; set; }
 
     public SqlPersistenceFactory(String connectionName, ISerialize serializer) {
         this(connectionName, serializer, null);
     }
                 
-    public SqlPersistenceFactory(String connectionName, ISerialize serializer, ISqlDialect dialect) {
+    public SqlPersistenceFactory(String connectionName, 
+                               ISerialize serializer, 
+                               ISqlDialect dialect) {
         this(serializer, TransactionScopeOption.Suppress, defaultPageSize);
         this.connectionFactory = new ConfigurationConnectionFactory(connectionName);
-        this.dialect = dialect ?? ResolveDialect(new ConfigurationConnectionFactory(connectionName).Settings);
+        this.dialect           = dialect!=null? dialect : resolveDialect(new ConfigurationConnectionFactory(connectionName).getSettings());
     }
     
-    public SqlPersistenceFactory(IConnectionFactory factory, ISerialize serializer, ISqlDialect dialect)
-        this(factory, serializer, dialect, TransactionScopeOption.Suppress, DefaultPageSize)
+    public SqlPersistenceFactory(IConnectionFactory factory, 
+                                ISerialize serializer, 
+                                ISqlDialect dialect) {
+        this(factory, serializer, dialect, TransactionScopeOption.Suppress, defaultPageSize);
     }
 
     public SqlPersistenceFactory(IConnectionFactory     factory,
@@ -45,61 +53,85 @@ public class SqlPersistenceFactory implements IPersistenceFactory {
         this.dialect = dialect;
     }
 
-		private SqlPersistenceFactory(ISerialize serializer, TransactionScopeOption scopeOption, int pageSize)
-		{
-			this.serializer = serializer;
-			this.scopeOption = scopeOption;
+    private SqlPersistenceFactory(ISerialize serializer, TransactionScopeOption scopeOption, int pageSize) {
+        this.serializer  = serializer;
+        this.scopeOption = scopeOption;
+        this.pageSize    = pageSize;
+        
+        this.connectionFactory = null;
+        this.dialect           = null;
+    }
 
-			this.PageSize = pageSize;
-		}
+    protected IConnectionFactory getConnectionFactory() {
+        return this.connectionFactory;
+    }
+    
+    protected ISqlDialect getDialect() {
+        return this.dialect;
+    }
+    
+    protected ISerialize getSerializer() {
+        return this.serializer;
+    }
+    
+    public int getPageSize() {
+        return pageSize;
+    }
+    public void setPageSize(int pageSize) {
+        this.pageSize = pageSize;
+    }
 
-		protected virtual IConnectionFactory ConnectionFactory
-		{
-			get { return this.connectionFactory; }
-		}
-		protected virtual ISqlDialect Dialect
-		{
-			get { return this.dialect; }
-		}
-		protected virtual ISerialize Serializer
-		{
-			get { return this.serializer; }
-		}
-		protected int PageSize { get; set; }
+    public IPersistStreams build() {
+        return new SqlPersistenceEngine(this.getConnectionFactory(), 
+                                        this.getDialect(), 
+                                        this.getSerializer(), 
+                                        this.scopeOption, 
+                                        this.getPageSize());
+    }
 
-		public virtual IPersistStreams Build()
-		{
-			return new SqlPersistenceEngine(
-				this.ConnectionFactory, this.Dialect, this.Serializer, this.scopeOption, this.PageSize);
-		}
+    private static ISqlDialect resolveDialect(ConnectionStringSettings settings) {
+        String connectionString = settings.getConnectionString().toUpperCase(); //ToUpperInvariant();
+        String providerName     = settings.getProviderName().toUpperCase();     //ToUpperInvariant();
 
-		private static ISqlDialect ResolveDialect(ConnectionStringSettings settings)
-		{
-			var connectionString = settings.ConnectionString.ToUpperInvariant();
-			var providerName = settings.ProviderName.ToUpperInvariant();
+        if (providerName.contains("MYSQL")) {
+            //return new MySqlDialect();
+        }
 
-			if (providerName.Contains("MYSQL"))
-				return new MySqlDialect();
+        if (providerName.contains("SQLITE")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new SqliteDialect();
+        }
 
-			if (providerName.Contains("SQLITE"))
-				return new SqliteDialect();
+        if (providerName.contains("SQLSERVERCE") || connectionString.contains(".SDF")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new SqlCeDialect();
+        }
 
-			if (providerName.Contains("SQLSERVERCE") || connectionString.Contains(".SDF"))
-				return new SqlCeDialect();
+        if (providerName.contains("FIREBIRD")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new FirebirdSqlDialect();
+        }
 
-			if (providerName.Contains("FIREBIRD"))
-				return new FirebirdSqlDialect();
+        if (providerName.contains("POSTGRES") || providerName.contains("NPGSQL")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new PostgreSqlDialect();
+        }
 
-			if (providerName.Contains("POSTGRES") || providerName.Contains("NPGSQL"))
-				return new PostgreSqlDialect();
+        if (providerName.contains("FIREBIRD")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new FirebirdSqlDialect();
+        }
 
-			if (providerName.Contains("FIREBIRD"))
-				return new FirebirdSqlDialect();
+        if (providerName.contains("OLEDB") && connectionString.contains("MICROSOFT.JET")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new AccessDialect();
+        }
+        
+        if (providerName.contains("MSSQL")) {
+            throw new UnsupportedOperationException("Not yet implemented");
+            //return new AccessDialect();
+        }
 
-			if (providerName.Contains("OLEDB") && connectionString.Contains("MICROSOFT.JET"))
-				return new AccessDialect();
-
-			return new MsSqlDialect();
-		}
-	}
+        return new MySqlDialect();
+    }
 }

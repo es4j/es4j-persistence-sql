@@ -1,10 +1,9 @@
 package org.es4j.dotnet;
 
-/**
- *
- * @author Esfand
- */
-public interface IDisposable {
+import java.io.Closeable;
+
+
+public interface IDisposable extends Closeable {
 
     public void dispose();
     

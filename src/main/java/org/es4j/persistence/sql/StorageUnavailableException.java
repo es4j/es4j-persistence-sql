@@ -1,9 +1,12 @@
 package org.es4j.persistence.sql;
 
+//import org.es4j.serialization.SerializationInfo;
+
+import org.es4j.dotnet.SerializationInfo;
+import org.es4j.dotnet.StreamingContext;
+
+
 //using System;
-
-import org.es4j.serialization.SerializationInfo;
-
 //using System.Runtime.Serialization;
 
 /// <summary>
@@ -41,7 +44,8 @@ public class StorageUnavailableException extends StorageException {
     /// </summary>
     /// <param name="info">The SerializationInfo that holds the serialized object data of the exception being thrown.</param>
     /// <param name="context">The StreamingContext that contains contextual information about the source or destination.</param>
-    //protected StorageUnavailableException(SerializationInfo info, StreamingContext context) {
-    //    super(info, context)
-    //}
+    protected StorageUnavailableException(SerializationInfo info, StreamingContext context) {
+        //super(info, context);
+        throw new UnsupportedOperationException("Not yet implemented");
+    }
 }

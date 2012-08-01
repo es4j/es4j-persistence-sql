@@ -1,9 +1,9 @@
 package org.es4j.dotnet;
 
-    // Summary:
-    //     Represents a configuration element within a configuration file.
-    public abstract class ConfigurationElement
-    {
+
+// Represents a configuration element within a configuration file.
+public abstract class ConfigurationElement {
+/*    
         // Summary:
         //     Initializes a new instance of the System.Configuration.ConfigurationElement
         //     class.
@@ -395,4 +395,5 @@ package org.es4j.dotnet;
         //     A System.Configuration.ConfigurationSaveMode that determines which property
         //     values to include.
         protected internal virtual void Unmerge(ConfigurationElement sourceElement, ConfigurationElement parentElement, ConfigurationSaveMode saveMode);
-    }
+*/
+}
