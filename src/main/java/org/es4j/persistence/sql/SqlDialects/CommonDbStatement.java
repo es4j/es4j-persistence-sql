@@ -1,17 +1,26 @@
 package org.es4j.persistence.sql.SqlDialects;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.es4j.dotnet.GC;
-import org.es4j.dotnet.TransactionScope;
+import org.es4j.dotnet.IDisposable;
+import org.es4j.dotnet.data.DBNull;
+import org.es4j.dotnet.data.DbType;
+import org.es4j.dotnet.data.IDataParameter;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.dotnet.data.IDbConnection;
 import org.es4j.dotnet.data.IDbTransaction;
+import org.es4j.dotnet.data.TransactionScope;
 import org.es4j.persistence.sql.IDbStatement;
 import org.es4j.persistence.sql.ISqlDialect;
 import org.es4j.persistence.sql.Messages;
+import org.es4j.persistence.sql.UniqueKeyViolationException;
 import org.es4j.util.logging.ILog;
 import org.es4j.util.logging.LogFactory;
 
@@ -31,18 +40,16 @@ public class CommonDbStatement implements IDbStatement {
     private final TransactionScope scope;
     private final IDbConnection    connection;
     private final IDbTransaction   transaction;
-    
-    private int pageSize; // { get; set; }
-
-    protected Map<String, Object> parameters; // { get; private set; }
+    private       int              pageSize;    // { get; set; }
+    private Map<String, Object>    parameters;  // { get; private set; }
 
     public Map<String, Object> getParameters() {
         return parameters;
     }
+    
     private void setParameters(Map<String, Object> parameters) {
         this.parameters = parameters;
     }
-    
 
     public CommonDbStatement(ISqlDialect      dialect,
                                TransactionScope scope,
@@ -72,11 +79,19 @@ public class CommonDbStatement implements IDbStatement {
         logger.verbose(Messages.disposingStatement());
 
         if (this.transaction != null) {
-            this.transaction.dispose();
+            try {
+                this.transaction.dispose();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
         }
 
         if (this.connection != null) {
-            this.connection.dispose();
+            try {
+                this.connection.dispose();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
         }
 
         if (this.scope != null) {
@@ -116,7 +131,7 @@ public class CommonDbStatement implements IDbStatement {
             return command.executeNonQuery();
         } catch (Exception e) {
             if (this.dialect.isDuplicate(e)) {
-                throw new UniqueKeyViolationException(e.getMessage, e);
+                throw new UniqueKeyViolationException(e.getMessage(), e);
             }
 
             throw new RuntimeException();
@@ -138,7 +153,7 @@ public class CommonDbStatement implements IDbStatement {
         return this.executeQuery(queryText, new NextPageDelegate(){
 
             @Override
-            public void NextPageDelegate(IDbCommand query, IDataRecord latest) {
+            public void nextPage(IDbCommand query, IDataRecord latest) {
             }
         }, infinitePageSize);
     }
@@ -159,7 +174,12 @@ public class CommonDbStatement implements IDbStatement {
         IDbCommand command = this.buildCommand(queryText);
 
         try {
-            return new PagedEnumerationCollection(this.scope, this.dialect, command, nextpage, pageSize, this);
+            return new PagedEnumerationCollection(this.scope, 
+                                                  this.dialect, 
+                                                  command, 
+                                                  nextpage, 
+                                                  pageSize,
+                                                  Arrays.asList((IDisposable)this));
         } catch (Exception ex) {
             try {
                 command.dispose();
@@ -194,14 +214,14 @@ public class CommonDbStatement implements IDbStatement {
     protected void buildParameter(IDbCommand command, String name, Object value) {
         IDataParameter parameter = command.createParameter();
         parameter.setParameterName(name);
-        this.SetParameterValue(parameter, value, null);
+        this.setParameterValue(parameter, value, null);
 
-        logger.verbose(Messages.bindingParameter(), name, parameter.Value);
-        command.getParameters().put(parameter);
+        logger.verbose(Messages.bindingParameter(), name, parameter.getValue());
+        command.getParameters().add(parameter);
     }
     
     protected void setParameterValue(IDataParameter param, Object value, DbType type) {
-        param.Value = value ?? DBNull.Value;
-        param.DbType = type ?? (value == null ? DbType.Binary : param.DbType);
+        param.setValue(value!=null? value : DBNull.getValue());
+        param.setDbType(type!=null?type : (value == null ? DbType.Binary : param.getDbType()));
     }
 }

@@ -2,14 +2,14 @@ package org.es4j.persistence.sql;
 
 import org.es4j.dotnet.ConfigurationErrorsException;
 import org.es4j.dotnet.ConfigurationManager;
-import org.es4j.dotnet.ConnectionStringSettings;
 import org.es4j.dotnet.Dictionary;
-import org.es4j.util.Guid;
 import org.es4j.dotnet.IDictionary;
 import org.es4j.dotnet.IDisposable;
 import org.es4j.dotnet.KeyValuePair;
+import org.es4j.dotnet.data.ConnectionStringSettings;
 import org.es4j.dotnet.data.DbProviderFactory;
 import org.es4j.dotnet.data.IDbConnection;
+import org.es4j.util.Guid;
 import org.es4j.util.StringExt;
 import org.es4j.util.logging.ILog;
 import org.es4j.util.logging.LogFactory;

@@ -1,15 +1,18 @@
 package org.es4j.persistence.sql.SqlDialects;
 
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import org.es4j.dotnet.GC;
 import org.es4j.dotnet.IDisposable;
-import org.es4j.dotnet.IEnumerable;
-import org.es4j.dotnet.TransactionScope;
+import org.es4j.dotnet.data.TransactionScope;
+import org.es4j.dotnet.data.IDataReader;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.exceptions.ObjectDisposedException;
 import org.es4j.persistence.sql.ISqlDialect;
+import org.es4j.persistence.sql.Messages;
+import org.es4j.persistence.sql.StorageUnavailableException;
 import org.es4j.util.logging.ILog;
 import org.es4j.util.logging.LogFactory;
 
@@ -21,13 +24,14 @@ import org.es4j.util.logging.LogFactory;
 //using System.Transactions;
 //using Logging;
 
-public class PagedEnumerationCollection implements IEnumerable<IDataRecord>, IEnumerator<IDataRecord> {
-    
-    private static final ILog Logger = LogFactory.buildLogger(PagedEnumerationCollection.class);
-    private final List<IDisposable> disposable; // = new IDisposable[] { };
+//public class PagedEnumerationCollection implements IEnumerable<IDataRecord>, IEnumerator<IDataRecord> {
+//public class PagedEnumerationCollection extends AbstractList<IDataRecord> {
+public class PagedEnumerationCollection implements Iterable<IDataRecord> {    
+    private static final ILog logger = LogFactory.buildLogger(PagedEnumerationCollection.class);
+    private final Iterable<IDisposable> disposable; // = new IDisposable[] { };
     private final ISqlDialect      dialect;
     private final IDbCommand       command;
-    private final NextPageDelegate nextpage;
+    private final NextPageDelegate nextpageDelegate;
     private final int              pageSize;
     private final TransactionScope scope;
 
@@ -36,22 +40,22 @@ public class PagedEnumerationCollection implements IEnumerable<IDataRecord>, IEn
     private IDataRecord current;
     private boolean     disposed;
 
-    public PagedEnumerationCollection(TransactionScope  scope,
-			              ISqlDialect       dialect,
-			              IDbCommand        command,
-			              NextPageDelegate  nextpage,
-			              int               pageSize,
-			              List<IDisposable> disposable)
+    public PagedEnumerationCollection(TransactionScope      scope,
+			              ISqlDialect           dialect,
+			              IDbCommand            command,
+			              NextPageDelegate      nextpage,
+			              int                   pageSize,
+			              Iterable<IDisposable> disposable)
     {
-        this.scope = scope;
-        this.dialect = dialect;
-        this.command = command;
-        this.nextpage = nextpage;
-        this.pageSize = pageSize;
+        this.scope      = scope;
+        this.dialect    = dialect;
+        this.command    = command;
+        this.nextpageDelegate   = nextpage;
+        this.pageSize   = pageSize;
         this.disposable = disposable != null ? disposable : new LinkedList<IDisposable>();
     }
 
-    public void Dispose() {
+    public void dispose() {
         this.dispose(true);
         GC.suppressFinalize(this);
     }
@@ -72,7 +76,11 @@ public class PagedEnumerationCollection implements IEnumerable<IDataRecord>, IEn
         this.reader = null;
 
         if (this.command != null) {
-            this.command.dispose();
+            try {
+                this.command.dispose();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
         }
 
         // queries do not modify state and thus calling Complete() on a so-called 'failed' query only
@@ -80,108 +88,120 @@ public class PagedEnumerationCollection implements IEnumerable<IDataRecord>, IEn
         if (this.scope != null) {
             this.scope.complete(); // caller will dispose scope.
         }
-        for (IDisposable disposable : this.disposable) {
-            disposable.dispose();
+        for (IDisposable disp : this.disposable) {
+            try {
+                disp.dispose();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
         }
     }
 
-    public IEnumerator<IDataRecord> getEnumerator()
-		{
-			if (this.disposed)
-				throw new ObjectDisposedException(Messages.objectAlreadyDisposed());
+    public Iterable<IDataRecord> getEnumerator() {
+        if (this.disposed) {
+            throw new ObjectDisposedException(Messages.objectAlreadyDisposed());
+        }
+        return this;
+    }
 
-			return this;
-		}
-                
-		IEnumerator IEnumerable.GetEnumerator()
-		{
-			return this.GetEnumerator();
-		}
+    Iterable IEnumerable_getEnumerator() {
+        return this.getEnumerator();
+    }
 
-		bool IEnumerator.MoveNext()
-		{
-			if (this.disposed)
-				throw new ObjectDisposedException(Messages.ObjectAlreadyDisposed);
+    boolean IEnumerator_moveNext() {
+        if (this.disposed) {
+            throw new ObjectDisposedException(Messages.objectAlreadyDisposed());
+        }
+        if (this.moveToNextRecord()) {
+            return true;
+        }
 
-			if (this.MoveToNextRecord())
-				return true;
+        logger.verbose(Messages.queryCompleted());
+        return false;
+    }
 
-			Logger.Verbose(Messages.QueryCompleted);
-			return false;
-		}
-		private bool MoveToNextRecord()
-		{
-			if (this.pageSize > 0 && this.position >= this.pageSize)
-			{
-				this.command.SetParameter(this.dialect.Skip, this.position);
-				this.nextpage(this.command, this.current);
-			}
+    private boolean moveToNextRecord() {
+        if (this.pageSize > 0 && this.position >= this.pageSize) {
+            this.command.setParameter(this.dialect.skip(), this.position);
+            (this.nextpageDelegate).nextPage(this.command, this.current);
+        }
 
-			this.reader = this.reader ?? this.OpenNextPage();
+        this.reader = this.reader != null ? this.reader : this.openNextPage();
 
-			if (this.reader.Read())
-				return this.IncrementPosition();
+        if (this.reader.read()) {
+            return this.incrementPosition();
+        }
 
-			if (!this.PagingEnabled())
-				return false;
+        if (!this.pagingEnabled()) {
+            return false;
+        }
 
-			if (!this.PageCompletelyEnumerated())
-				return false;
+        if (!this.pageCompletelyEnumerated()) {
+            return false;
+        }
 
-			Logger.Verbose(Messages.EnumeratedRowCount, this.position);
-			this.reader.Dispose();
-			this.reader = this.OpenNextPage();
+        logger.verbose(Messages.enumeratedRowCount(), this.position);
+        this.reader.dispose();
+        this.reader = this.openNextPage();
 
-			if (this.reader.Read())
-				return this.IncrementPosition();
+        if (this.reader.read()) {
+            return this.incrementPosition();
+        }
 
-			return false;
-		}
+        return false;
+    }
 
-		private bool IncrementPosition()
-		{
-			this.position++;
-			return true;
-		}
+    private boolean incrementPosition() {
+        this.position++;
+        return true;
+    }
 
-		private bool PagingEnabled()
-		{
-			return this.pageSize > 0;
-		}
-		private bool PageCompletelyEnumerated()
-		{
-			return this.position > 0 && 0 == this.position % this.pageSize;
-		}
-		private IDataReader OpenNextPage()
-		{
-			try
-			{
-				return this.command.ExecuteReader();
-			}
-			catch (Exception e)
-			{
-				Logger.Debug(Messages.EnumerationThrewException, e.GetType());
-				throw new StorageUnavailableException(e.Message, e);
-			}
-		}
+    private boolean pagingEnabled() {
+        return this.pageSize > 0;
+    }
 
-		public virtual void Reset()
-		{
-			throw new NotSupportedException("Forward-only readers.");
-		}
-		public virtual IDataRecord Current
-		{
-			get
-			{
-				if (this.disposed)
-					throw new ObjectDisposedException(Messages.ObjectAlreadyDisposed);
+    private boolean pageCompletelyEnumerated() {
+        return this.position > 0 && 0 == this.position % this.pageSize;
+    }
 
-				return this.current = this.reader;
-			}
-		}
-		object IEnumerator.Current
-		{
-			get { return ((IEnumerator<IDataRecord>)this).Current; }
-		}
-	}
+    private IDataReader openNextPage() {
+        try {
+            return this.command.executeReader();
+        } catch (Exception e) {
+            logger.debug(Messages.enumerationThrewException(), e.getClass().getName());
+            throw new StorageUnavailableException(e.getMessage(), e);
+        }
+    }
+
+    public void reset() {
+        //throw new NotSupportedException("Forward-only readers.");
+        throw new UnsupportedOperationException("Forward-only readers.");
+    }
+
+    public IDataRecord getCurrent() {
+        if (this.disposed) {
+            throw new ObjectDisposedException(Messages.objectAlreadyDisposed());
+        }
+        return this.current = this.reader;
+    }
+
+    Object IEnumerator_getCurrent() {
+        return this/*((Iterable<IDataRecord>)this)*/.getCurrent();
+    }
+
+/*
+    @Override
+    public IDataRecord get(int index) {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
+    public int size() {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+*/
+    @Override
+    public Iterator<IDataRecord> iterator() {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
 }

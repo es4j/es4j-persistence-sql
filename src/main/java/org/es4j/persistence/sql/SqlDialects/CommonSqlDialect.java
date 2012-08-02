@@ -1,129 +1,171 @@
-namespace EventStore.Persistence.SqlPersistence.SqlDialects
-{
-	using System;
-	using System.Data;
-	using System.Transactions;
+package org.es4j.persistence.sql.SqlDialects;
 
-	public abstract class CommonSqlDialect : ISqlDialect
-	{
-		public abstract string InitializeStorage { get; }
-		public virtual string PurgeStorage
-		{
-			get { return CommonSqlStatements.PurgeStorage; }
-		}
+import org.es4j.dotnet.data.IDbConnection;
+import org.es4j.dotnet.data.IDbTransaction;
+import org.es4j.dotnet.data.TransactionScope;
+import org.es4j.dotnet.data.TransactionScopeOption;
+import org.es4j.persistence.sql.IDbStatement;
+import org.es4j.persistence.sql.ISqlDialect;
 
-		public virtual string GetCommitsFromStartingRevision
-		{
-			get { return CommonSqlStatements.GetCommitsFromStartingRevision; }
-		}
-		public virtual string GetCommitsFromInstant
-		{
-			get { return CommonSqlStatements.GetCommitsFromInstant; }
-		}
-		public virtual string PersistCommit
-		{
-			get { return CommonSqlStatements.PersistCommit; }
-		}
-		public virtual string DuplicateCommit
-		{
-			get { return CommonSqlStatements.DuplicateCommit; }
-		}
+//namespace EventStore.Persistence.SqlPersistence.SqlDialects
+//using System;
+//using System.Data;
+//using System.Transactions;
 
-		public virtual string GetStreamsRequiringSnapshots
-		{
-			get { return CommonSqlStatements.GetStreamsRequiringSnapshots; }
-		}
-		public virtual string GetSnapshot
-		{
-			get { return CommonSqlStatements.GetSnapshot; }
-		}
-		public virtual string AppendSnapshotToCommit
-		{
-			get { return CommonSqlStatements.AppendSnapshotToCommit; }
-		}
 
-		public virtual string GetUndispatchedCommits
-		{
-			get { return CommonSqlStatements.GetUndispatchedCommits; }
-		}
-		public virtual string MarkCommitAsDispatched
-		{
-			get { return CommonSqlStatements.MarkCommitAsDispatched; }
-		}
+public abstract class CommonSqlDialect implements ISqlDialect {
 
-		public virtual string StreamId
-		{
-			get { return "@StreamId"; }
-		}
-		public virtual string StreamRevision
-		{
-			get { return "@StreamRevision"; }
-		}
-		public virtual string MaxStreamRevision
-		{
-			get { return "@MaxStreamRevision"; }
-		}
-		public virtual string Items
-		{
-			get { return "@Items"; }
-		}
-		public virtual string CommitId
-		{
-			get { return "@CommitId"; }
-		}
-		public virtual string CommitSequence
-		{
-			get { return "@CommitSequence"; }
-		}
-		public virtual string CommitStamp
-		{
-			get { return "@CommitStamp"; }
-		}
-		public virtual string Headers
-		{
-			get { return "@Headers"; }
-		}
-		public virtual string Payload
-		{
-			get { return "@Payload"; }
-		}
-		public virtual string Threshold
-		{
-			get { return "@Threshold"; }
-		}
+    @Override
+    public abstract String initializeStorage();
 
-		public virtual string Limit
-		{
-			get { return "@Limit"; }
-		}
-		public virtual string Skip
-		{
-			get { return "@Skip"; }
-		}
-		public virtual bool CanPage
-		{
-			get { return true; }
-		}
+    @Override
+    public String purgeStorage() {
+        return CommonSqlStatements.purgeStorage();
+    }
 
-		public virtual object CoalesceParameterValue(object value)
-		{
-			return value;
-		}
+    @Override
+    public String getCommitsFromStartingRevision() {
+        return CommonSqlStatements.getCommitsFromStartingRevision();
+    }
 
-		public virtual bool IsDuplicate(Exception exception)
-		{
-			var message = exception.Message.ToUpperInvariant();
-			return message.Contains("DUPLICATE") || message.Contains("UNIQUE") || message.Contains("CONSTRAINT");
-		}
+    @Override
+    public String getCommitsFromInstant() {
 
-		public virtual IDbTransaction OpenTransaction(IDbConnection connection)
-		{
-			return null;
-		}
-		public virtual IDbStatement BuildStatement(
-			TransactionScope scope, IDbConnection connection, IDbTransaction transaction)
-		{
-			return new CommonDbStatement(this, scope, connection, transaction);
-		}
-	}
+        return CommonSqlStatements.getCommitsFromInstant();
+    }
+
+    @Override
+    public String persistCommit() {
+
+        return CommonSqlStatements.persistCommit();
+    }
+
+    @Override
+    public String duplicateCommit() {
+
+        return CommonSqlStatements.duplicateCommit();
+    }
+
+    @Override
+    public String getStreamsRequiringSnapshots() {
+
+        return CommonSqlStatements.getStreamsRequiringSnapshots();
+    }
+
+    @Override
+    public String getSnapshot() {
+        return CommonSqlStatements.getSnapshot();
+    }
+
+    @Override
+    public String appendSnapshotToCommit() {
+        return CommonSqlStatements.appendSnapshotToCommit();
+    }
+
+    @Override
+    public String getUndispatchedCommits() {
+        return CommonSqlStatements.getUndispatchedCommits();
+    }
+
+    @Override
+    public String markCommitAsDispatched() {
+        return CommonSqlStatements.markCommitAsDispatched();
+    }
+
+    @Override
+    public String streamId() {
+        return "@StreamId";
+    }
+
+    @Override
+    public String streamRevision() {
+        return "@StreamRevision";
+    }
+
+    /**
+     *
+     * @return
+     */
+    @Override
+    public String maxStreamRevision() {
+        return "@MaxStreamRevision";
+    }
+
+    @Override
+    public String items() {
+        return "@Items";
+    }
+
+    @Override
+    public String commitId() {
+        return "@CommitId";
+    }
+
+    @Override
+    public String commitSequence() {
+        return "@CommitSequence";
+    }
+
+    @Override
+    public String commitStamp() {
+        return "@CommitStamp";
+    }
+
+    @Override
+    public String headers() {
+        return "@Headers";
+    }
+
+    @Override
+    public String payload() {
+        return "@Payload";
+    }
+
+    @Override
+    public String threshold() {
+        return "@Threshold";
+    }
+
+    @Override
+    public String limit() {
+        return "@Limit";
+    }
+
+    @Override
+    public String skip() {
+        return "@Skip";
+    }
+
+    @Override
+    public boolean canPage() {
+        return true;
+    }
+
+    @Override
+    public Object coalesceParameterValue(Object value) {
+        return value;
+    }
+
+    @Override
+    public boolean isDuplicate(Exception exception) {
+        String message = exception.getMessage().toUpperCase();
+        return message.contains("DUPLICATE") || message.contains("UNIQUE") || message.contains("CONSTRAINT");
+    }
+
+    /**
+     *
+     * @param connection
+     * @return
+     */
+    @Override
+    public IDbTransaction openTransaction(IDbConnection connection) {
+        return null;
+    }
+
+    @Override
+    public IDbStatement buildStatement(TransactionScope scope, 
+                                       IDbConnection    connection, 
+                                       IDbTransaction   transaction) {
+        return new CommonDbStatement(this, scope, connection, transaction);
+    }
 }

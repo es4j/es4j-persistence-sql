@@ -1,20 +1,24 @@
-namespace EventStore.Persistence.SqlPersistence
-{
-	using System.Data;
-	using Persistence;
+package org.es4j.persistence.sql;
 
-	internal static class StreamHeadExtensions
-	{
-		private const int StreamIdIndex = 0;
-		private const int HeadRevisionIndex = 1;
-		private const int SnapshotRevisionIndex = 2;
+import java.util.UUID;
+import org.es4j.dotnet.data.IDataRecord;
+import org.es4j.eventstore.api.persistence.StreamHead;
 
-		public static StreamHead GetStreamToSnapshot(this IDataRecord record)
-		{
-			return new StreamHead(
-				record[StreamIdIndex].ToGuid(),
-				record[HeadRevisionIndex].ToInt(),
-				record[SnapshotRevisionIndex].ToInt());
-		}
-	}
+//namespace EventStore.Persistence.SqlPersistence
+//using System.Data;
+//using Persistence;
+
+
+public class StreamHeadExtensions {
+
+    private static final int streamIdIndex         = 0;
+    private static final int headRevisionIndex     = 1;
+    private static final int snapshotRevisionIndex = 2;
+
+    public static StreamHead getStreamToSnapshot(/*this*/IDataRecord record) {
+        return new StreamHead(
+                ExtensionMethods.toGuid(record.get(streamIdIndex)),
+                ExtensionMethods.toInt(record.get(headRevisionIndex)),
+                ExtensionMethods.toInt(record.get(snapshotRevisionIndex)));
+    }
 }

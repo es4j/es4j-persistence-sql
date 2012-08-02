@@ -4,6 +4,7 @@ import java.io.IOException;
 import org.es4j.dotnet.GC;
 import org.es4j.dotnet.HttpContext;
 import org.es4j.dotnet.IDisposable;
+import org.es4j.dotnet.Thread;
 import org.es4j.exceptions.ArgumentException;
 import org.es4j.util.StringExt;
 import org.es4j.util.logging.ILog;

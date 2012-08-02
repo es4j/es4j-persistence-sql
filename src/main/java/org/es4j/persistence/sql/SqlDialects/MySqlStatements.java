@@ -41,7 +41,7 @@ public class MySqlStatements {
     ///   Returns the cached ResourceManager instance used by this class.
     /// </summary>
     //[global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-    static ResourceManager getResourceManager() {
+    private static ResourceManager getResourceManager() {
         if (resourceMan == null) {
             ResourceManager temp = null; // new ResourceManager("EventStore.Persistence.SqlPersistence.SqlDialects.MySqlStatements", typeof(MySqlStatements).Assembly);
             resourceMan = temp;
@@ -76,7 +76,7 @@ public class MySqlStatements {
     ///       Payload blob NOT NULL,
     ///       CONSTRAINT PK_Commits PRIMARY KEY (StreamId, CommitS [rest of string was truncated]&quot;;.
     /// </summary>
-    private static String initializeStorage() {
+    public static String initializeStorage() {
         return ResourceManager.getString("InitializeStorage", resourceCulture);
     }
 }

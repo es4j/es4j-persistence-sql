@@ -7,5 +7,5 @@ import org.es4j.dotnet.data.IDbCommand;
 //using System.Data;
 
 public abstract class NextPageDelegate {
-    public abstract void NextPageDelegate(IDbCommand command, IDataRecord current);
+    public abstract void nextPage(IDbCommand command, IDataRecord current);
 }

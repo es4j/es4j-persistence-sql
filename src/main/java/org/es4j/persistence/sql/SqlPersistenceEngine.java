@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.es4j.dotnet.GC;
 import org.es4j.util.Guid;
 import org.es4j.dotnet.IEnumerable;
-import org.es4j.dotnet.TransactionScope;
+import org.es4j.dotnet.data.TransactionScope;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.dotnet.data.TransactionScopeOption;
@@ -15,7 +15,7 @@ import org.es4j.eventstore.api.persistence.IPersistStreams;
 import org.es4j.exceptions.ArgumentException;
 import org.es4j.exceptions.ArgumentNullException;
 import org.es4j.exceptions.ObjectDisposedException;
-import org.es4j.perseistence.sql.sqldialects.NextPageDelegate;
+//import org.es4j.perseistence.sql.sqldialects.NextPageDelegate;
 import org.es4j.serialization.api.ISerialize;
 import org.es4j.util.DateTime;
 import org.es4j.util.logging.ILog;
@@ -114,8 +114,8 @@ public class SqlPersistenceEngine implements IPersistStreams {
         logger.debug(Messages.gettingAllCommitsBetween(), streamId, minRevision, maxRevision);
         return this.executeQuery(streamId, new QueryDelegate<Commit>() {
 
-            @Override
-            public Iterable<Commit> execute(IDbStatement query) {
+    @Override
+    public Iterable<Commit> execute(IDbStatement query) {
                 String statement = dialect.getCommitsFromStartingRevision();
                 query.addParameter(dialect.streamId(),          streamId);
                 query.addParameter(dialect.streamRevision(),    minRevision);
