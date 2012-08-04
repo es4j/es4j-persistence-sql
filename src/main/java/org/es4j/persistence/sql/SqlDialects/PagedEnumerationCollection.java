@@ -10,6 +10,7 @@ import org.es4j.dotnet.data.IDataReader;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.exceptions.ObjectDisposedException;
+import org.es4j.persistence.sql.ExtensionMethods;
 import org.es4j.persistence.sql.ISqlDialect;
 import org.es4j.persistence.sql.Messages;
 import org.es4j.persistence.sql.StorageUnavailableException;
@@ -122,7 +123,7 @@ public class PagedEnumerationCollection implements Iterable<IDataRecord> {
 
     private boolean moveToNextRecord() {
         if (this.pageSize > 0 && this.position >= this.pageSize) {
-            this.command.setParameter(this.dialect.skip(), this.position);
+            ExtensionMethods.setParameter(this.command, this.dialect.skip(), this.position);
             (this.nextpageDelegate).nextPage(this.command, this.current);
         }
 

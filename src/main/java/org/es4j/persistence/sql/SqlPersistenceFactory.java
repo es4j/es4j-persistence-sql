@@ -1,9 +1,11 @@
 package org.es4j.persistence.sql;
 
-import org.es4j.dotnet.ConnectionStringSettings;
+import org.es4j.dotnet.data.ConnectionStringSettings;
 import org.es4j.dotnet.data.TransactionScopeOption;
 import org.es4j.eventstore.api.persistence.IPersistStreams;
 import org.es4j.eventstore.api.persistence.IPersistenceFactory;
+import org.es4j.exceptions.ArgumentNullException;
+import org.es4j.persistence.sql.SqlDialects.MySqlDialect;
 import org.es4j.serialization.api.ISerialize;
 
 //using System;
@@ -14,12 +16,12 @@ import org.es4j.serialization.api.ISerialize;
 
 public class SqlPersistenceFactory implements IPersistenceFactory {
     private static final int             defaultPageSize = 128;
+    
     private final IConnectionFactory     connectionFactory;
     private final ISqlDialect            dialect;
     private final ISerialize             serializer;
     private final TransactionScopeOption scopeOption;
-    
-    protected int pageSize; // { get; set; }
+    protected     int                     pageSize; // { get; set; }
 
     public SqlPersistenceFactory(String connectionName, ISerialize serializer) {
         this(connectionName, serializer, null);
@@ -28,32 +30,41 @@ public class SqlPersistenceFactory implements IPersistenceFactory {
     public SqlPersistenceFactory(String connectionName, 
                                ISerialize serializer, 
                                ISqlDialect dialect) {
-        this(serializer, TransactionScopeOption.Suppress, defaultPageSize);
+        //this(serializer, TransactionScopeOption.Suppress, defaultPageSize);
+        this.serializer  = serializer;
+        this.scopeOption = TransactionScopeOption.Suppress;
+        this.pageSize    = defaultPageSize;
+    
         this.connectionFactory = new ConfigurationConnectionFactory(connectionName);
         this.dialect           = dialect!=null? dialect : resolveDialect(new ConfigurationConnectionFactory(connectionName).getSettings());
     }
     
     public SqlPersistenceFactory(IConnectionFactory factory, 
-                                ISerialize serializer, 
-                                ISqlDialect dialect) {
+                                ISerialize        serializer, 
+                                ISqlDialect       dialect) {
         this(factory, serializer, dialect, TransactionScopeOption.Suppress, defaultPageSize);
     }
 
     public SqlPersistenceFactory(IConnectionFactory     factory,
-			         ISerialize             serializer,
-			         ISqlDialect            dialect,
-			         TransactionScopeOption scopeOption,
-			         int                    pageSize) {
-        this(serializer, scopeOption, pageSize);
+			        ISerialize             serializer,
+			        ISqlDialect            dialect,
+			        TransactionScopeOption scopeOption,
+			        int                    pageSize) {
+        //this(serializer, scopeOption, pageSize);
+        this.serializer  = serializer;
+        this.scopeOption = scopeOption;
+        this.pageSize    = pageSize;
+               
         if (dialect == null) {
             throw new ArgumentNullException("dialect");
         }
-
         this.connectionFactory = factory;
-        this.dialect = dialect;
+        this.dialect           = dialect;
     }
 
-    private SqlPersistenceFactory(ISerialize serializer, TransactionScopeOption scopeOption, int pageSize) {
+    private SqlPersistenceFactory(ISerialize            serializer, 
+                                TransactionScopeOption scopeOption, 
+                                int                    pageSize) {
         this.serializer  = serializer;
         this.scopeOption = scopeOption;
         this.pageSize    = pageSize;
@@ -81,6 +92,7 @@ public class SqlPersistenceFactory implements IPersistenceFactory {
         this.pageSize = pageSize;
     }
 
+    @Override
     public IPersistStreams build() {
         return new SqlPersistenceEngine(this.getConnectionFactory(), 
                                         this.getDialect(), 

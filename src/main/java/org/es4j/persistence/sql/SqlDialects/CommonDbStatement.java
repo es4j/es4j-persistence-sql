@@ -2,19 +2,16 @@ package org.es4j.persistence.sql.SqlDialects;
 
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.es4j.dotnet.GC;
 import org.es4j.dotnet.IDisposable;
 import org.es4j.dotnet.data.DBNull;
 import org.es4j.dotnet.data.DbType;
-import org.es4j.dotnet.data.IDataParameter;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
 import org.es4j.dotnet.data.IDbConnection;
+import org.es4j.dotnet.data.IDbDataParameter;
 import org.es4j.dotnet.data.IDbTransaction;
 import org.es4j.dotnet.data.TransactionScope;
 import org.es4j.persistence.sql.IDbStatement;
@@ -212,15 +209,15 @@ public class CommonDbStatement implements IDbStatement {
     }
     
     protected void buildParameter(IDbCommand command, String name, Object value) {
-        IDataParameter parameter = command.createParameter();
+        IDbDataParameter parameter = command.createParameter();
         parameter.setParameterName(name);
         this.setParameterValue(parameter, value, null);
 
         logger.verbose(Messages.bindingParameter(), name, parameter.getValue());
-        command.getParameters().add(parameter);
+        command.getParameters().put(name, parameter);
     }
     
-    protected void setParameterValue(IDataParameter param, Object value, DbType type) {
+    protected void setParameterValue(IDbDataParameter param, Object value, DbType type) {
         param.setValue(value!=null? value : DBNull.getValue());
         param.setDbType(type!=null?type : (value == null ? DbType.Binary : param.getDbType()));
     }

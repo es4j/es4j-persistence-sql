@@ -1,5 +1,6 @@
 package org.es4j.persistence.sql;
 
+import java.util.UUID;
 import org.es4j.dotnet.ConfigurationErrorsException;
 import org.es4j.dotnet.ConfigurationManager;
 import org.es4j.dotnet.Dictionary;
@@ -9,8 +10,9 @@ import org.es4j.dotnet.KeyValuePair;
 import org.es4j.dotnet.data.ConnectionStringSettings;
 import org.es4j.dotnet.data.DbProviderFactory;
 import org.es4j.dotnet.data.IDbConnection;
-import org.es4j.util.Guid;
+import org.es4j.util.Consts;
 import org.es4j.util.StringExt;
+import org.es4j.util.UUIDExt;
 import org.es4j.util.logging.ILog;
 import org.es4j.util.logging.LogFactory;
 
@@ -53,14 +55,14 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         if (StringExt.isNullOrEmpty(settings.getKey())) {
             throw new ConfigurationErrorsException(Messages.notConnectionsAvailable());
         }
-        return openScope(Guid.empty(), settings.getKey());
+        return openScope(Consts.EMPTY_UUID, settings.getKey());
     }
     
     public static IDisposable openScope(String connectionName) {
-        return openScope(Guid.empty(), connectionName);
+        return openScope(Consts.EMPTY_UUID, connectionName);
     }
     
-    public static IDisposable openScope(Guid streamId, String connectionName) {
+    public static IDisposable openScope(UUID streamId, String connectionName) {
         ConfigurationConnectionFactory factory = new ConfigurationConnectionFactory(connectionName);
         return factory.open(streamId, connectionName);
     }
@@ -70,18 +72,18 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
     }
 
     @Override
-    public IDbConnection openMaster(Guid streamId) {
+    public IDbConnection openMaster(UUID streamId) {
         logger.verbose(Messages.openingMasterConnection(), this.masterConnectionName);
         return this.open(streamId, this.masterConnectionName);
     }
 
     @Override
-    public IDbConnection openReplica(Guid streamId) {
+    public IDbConnection openReplica(UUID streamId) {
         logger.verbose(Messages.openingReplicaConnection(), this.replicaConnectionName);
         return this.open(streamId, this.replicaConnectionName);
     }
     
-    protected IDbConnection open(Guid streamId, String connectionName) {
+    protected IDbConnection open(UUID streamId, String connectionName) {
         final ConnectionStringSettings  setting = this.getSetting(connectionName);
         final String connectionString = this.buildConnectionString(streamId, setting);
         return new ConnectionScope(connectionString, new FactoryDelegate<IDbConnection>() {
@@ -163,7 +165,7 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         return settings;
     }
 
-    protected String buildConnectionString(Guid streamId, ConnectionStringSettings setting) {
+    protected String buildConnectionString(UUID streamId, ConnectionStringSettings setting) {
         if (this.shards == 0) {
             return setting.getConnectionString();
         }
@@ -172,9 +174,9 @@ public class ConfigurationConnectionFactory implements IConnectionFactory {
         return StringExt.formatWith(setting.getConnectionString(), this.computeHashKey(streamId));
     }
     
-    protected String computeHashKey(Guid streamId) {
+    protected String computeHashKey(UUID streamId) {
         // simple sharding scheme which could easily be improved through such techniques
         // as consistent hashing (Amazon Dynamo) or other kinds of sharding.
-        return new Integer(this.shards == 0 ? 0 : streamId.toByteArray()[0] % this.shards).toString();
+        return new Integer(this.shards == 0 ? 0 : UUIDExt.toByteArray(streamId)[0] % this.shards).toString();
     }
 }

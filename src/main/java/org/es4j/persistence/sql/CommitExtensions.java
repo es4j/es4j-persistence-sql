@@ -19,6 +19,8 @@ import org.es4j.util.logging.LogFactory;
 //using System.Data;
 //using Logging;
 //using Serialization;
+
+
 public class CommitExtensions {
 
     private static final int streamIdIndex       = 0;
@@ -35,10 +37,11 @@ public class CommitExtensions {
         logger.verbose(Messages.deserializingCommit(), serializer.getClass());
         
         GenericType<Map<String,Object>> mapType = new GenericType<Map<String,Object>>(){};
-        Map<String,Object> headers = serializer.deserialize/*<Map< String,Object>>*/(record, headersIndex);
+        //Map<String,Object> headers = serializer.deserialize(record, headersIndex);
+        Map<String,Object> headers = deserialize(serializer, mapType, record, headersIndex);
         
         GenericType<List<EventMessage>> listType = new GenericType<List<EventMessage>>(){};
-        List<EventMessage> events = serializer.deserialize/*<List<EventMessage>>*/(record, payloadIndex);
+        List<EventMessage> events = deserialize(serializer, listType, record, payloadIndex);
 
         return new Commit(ExtensionMethods.toGuid(record.get(streamIdIndex)),
                 ExtensionMethods.toInt(record.get(streamRevisionIndex)),
@@ -49,7 +52,7 @@ public class CommitExtensions {
                 events);
     }
 
-    public static UUID StreamId(/*this*/IDataRecord record) {
+    public static UUID streamId(/*this*/IDataRecord record) {
         return ExtensionMethods.toGuid(record.get(streamIdIndex));
     }
 
@@ -68,6 +71,7 @@ public class CommitExtensions {
         }
 
         byte[] bytes = (byte[]) value;
-        return bytes.length == 0 ? null/*default(T)*/ : serializer.deserialize(bytes, type);
+        throw new UnsupportedOperationException("Figureout how to convert byte[] to stream");
+        //return bytes.length == 0 ? null/*default(T)*/ : serializer.deserialize(bytes, type);
     }
 }

@@ -1,22 +1,32 @@
 package org.es4j.persistence.sql;
 
+import java.util.LinkedList;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.es4j.dotnet.GC;
-import org.es4j.util.Guid;
 import org.es4j.dotnet.IEnumerable;
-import org.es4j.dotnet.data.TransactionScope;
+import org.es4j.dotnet.data.ConnectionFactory;
 import org.es4j.dotnet.data.IDataRecord;
 import org.es4j.dotnet.data.IDbCommand;
+import org.es4j.dotnet.data.IDbConnection;
+import org.es4j.dotnet.data.IDbTransaction;
+import org.es4j.dotnet.data.TransactionScope;
 import org.es4j.dotnet.data.TransactionScopeOption;
 import org.es4j.eventstore.api.Commit;
 import org.es4j.eventstore.api.ConcurrencyException;
+import org.es4j.eventstore.api.DuplicateCommitException;
 import org.es4j.eventstore.api.Snapshot;
 import org.es4j.eventstore.api.persistence.IPersistStreams;
+import org.es4j.eventstore.api.persistence.StreamHead;
 import org.es4j.exceptions.ArgumentException;
 import org.es4j.exceptions.ArgumentNullException;
 import org.es4j.exceptions.ObjectDisposedException;
-//import org.es4j.perseistence.sql.sqldialects.NextPageDelegate;
+import org.es4j.messaging.api.EventMessage;
+import org.es4j.persistence.sql.SqlDialects.NextPageDelegate;
 import org.es4j.serialization.api.ISerialize;
+import org.es4j.serialization.api.SerializationExtensions;
+import org.es4j.util.Consts;
 import org.es4j.util.DateTime;
 import org.es4j.util.logging.ILog;
 import org.es4j.util.logging.LogFactory;
@@ -78,6 +88,11 @@ public class SqlPersistenceEngine implements IPersistStreams {
     }
 
     @Override
+    public void close() throws Exception {
+        throw new UnsupportedOperationException("Not supported yet.");
+    }
+
+    @Override
     public void dispose() {
         this.dispose(true);
         GC.suppressFinalize(this);
@@ -101,21 +116,22 @@ public class SqlPersistenceEngine implements IPersistStreams {
         }
 
         logger.debug(Messages.initializingStorage());
-        this.executeCommand(Guid.empty(), new CommandDelegate() {
+        this.executeCommand(Consts.EMPTY_UUID, new CommandDelegate<Integer>() {
 
             @Override
-            public Object execute(IDbStatement cmd) {
+            public Integer execute(IDbStatement cmd) {
                 return cmd.executeWithoutExceptions(dialect.initializeStorage());
             }
         });
     }
 
-    public Iterable<Commit> getFrom(final Guid streamId, final int minRevision, final int maxRevision) {
-        logger.debug(Messages.gettingAllCommitsBetween(), streamId, minRevision, maxRevision);
-        return this.executeQuery(streamId, new QueryDelegate<Commit>() {
-
     @Override
-    public Iterable<Commit> execute(IDbStatement query) {
+    public Iterable<Commit> getFrom(final UUID streamId, final int minRevision, final int maxRevision) {
+        logger.debug(Messages.gettingAllCommitsBetween(), streamId, minRevision, maxRevision);
+        Iterable<IDataRecord> records = this.executeQuery(streamId, new QueryDelegate<IDataRecord>() {
+
+            @Override
+            public Iterable<IDataRecord> execute(IDbStatement query) {
                 String statement = dialect.getCommitsFromStartingRevision();
                 query.addParameter(dialect.streamId(),          streamId);
                 query.addParameter(dialect.streamRevision(),    minRevision);
@@ -125,36 +141,46 @@ public class SqlPersistenceEngine implements IPersistStreams {
 
                     @Override
                     public void nextPage(IDbCommand query, IDataRecord record) {
-                        query.setParameter(dialect.commitSequence(), record.commitSequence()));
+                        ExtensionMethods.setParameter(query, 
+                                                      dialect.commitSequence(),                 // parameter name
+                                                      CommitExtensions.commitSequence(record)); // parameter value
                     }
                 });
-                                (q, r) => q.setParameter(this.dialect.CommitSequence, r.CommitSequence()))
-                        .Select(x => x.getCommit(this.serializer));
             }
         });
+        List<Commit> commits = new LinkedList<Commit>();
+        for(IDataRecord x : records) {
+            commits.add(CommitExtensions.getCommit(x, serializer));
+        }        
+        return commits;
     }
-                
+       
     @Override
-    public Iterable<Commit> getFrom(DateTime start) {
-        final DateTime finalstart = start < epochTime ? epochTime : start;
+    public Iterable<Commit> getFrom(final DateTime start1) {
+        final DateTime finalstart = start1.isBefore(epochTime)? epochTime : start1;
 
         logger.debug(Messages.gettingAllCommitsFrom(), finalstart);
-        return this.executeQuery(Guid.empty(), new QueryDelegate<Commit>() {
+        Iterable<IDataRecord> records = this.executeQuery(Consts.EMPTY_UUID, new QueryDelegate<IDataRecord>() {
 
             @Override
-            public Iterable<Commit> execute(IDbStatement query) {
+            public Iterable<IDataRecord> execute(IDbStatement query) {
                 String statement = dialect.getCommitsFromInstant();
                 query.addParameter(dialect.commitStamp(), finalstart);
-                return query.executePagedQuery(statement, new PagedQuery());
-                
-                (q, r) => { })
-					.Select(x => x.GetCommit(this.serializer));
+                return query.executePagedQuery(statement, new NextPageDelegate() {
+
+                    @Override
+                    public void nextPage(IDbCommand command, IDataRecord current) {
+                        // Nothing to do
+                    }
+                });
             }
         });
-        
-			{
-
-			});
+        List<Commit> commits = new LinkedList<Commit>();
+        for(IDataRecord x : records) {
+            //.Select(x => x.GetCommit(this.serializer));
+            commits.add(CommitExtensions.getCommit(x, serializer));
+        }        
+        return commits;
     }
                 
     @Override
@@ -163,7 +189,7 @@ public class SqlPersistenceEngine implements IPersistStreams {
             this.persistCommit(attempt);
             logger.debug(Messages.commitPersisted(), attempt.getCommitId());
         } catch (Exception e) {
-            if (!(e.getClass().equals(UniqueKeyViolationException.class))  {
+            if(e instanceof UniqueKeyViolationException) {
                 throw new RuntimeException();
             }
             if (this.detectDuplicate(attempt)) {
@@ -176,22 +202,23 @@ public class SqlPersistenceEngine implements IPersistStreams {
     }
 
     private void persistCommit(final Commit attempt) {
-        logger.debug(Messages.attemptingToCommit(), attempt.getEvents().Count, 
+        final int eventCount = this.countof(attempt.getEvents());
+        logger.debug(Messages.attemptingToCommit(), eventCount, 
                                                     attempt.getStreamId(), 
                                                     attempt.getCommitSequence());
 
-        this.executeCommand(attempt.getStreamId(), new CommandDelegate() {
+        this.executeCommand(attempt.getStreamId(), new CommandDelegate<Integer>() {
 
             @Override
-            public Object execute(IDbStatement cmd) {
+            public Integer execute(IDbStatement cmd) {
                 cmd.addParameter(dialect.streamId(),       attempt.getStreamId());
                 cmd.addParameter(dialect.streamRevision(), attempt.getStreamRevision());
-                cmd.addParameter(dialect.items(),          attempt.getEvents().Count);
+                cmd.addParameter(dialect.items(),          eventCount);
                 cmd.addParameter(dialect.commitId(),       attempt.getCommitId());
                 cmd.addParameter(dialect.commitSequence(), attempt.getCommitSequence());
                 cmd.addParameter(dialect.commitStamp(),    attempt.getCommitStamp());
-                cmd.addParameter(dialect.headers(), serializer.Serialize(attempt.getHeaders()));
-                cmd.addParameter(dialect.payload(), serializer.Serialize(attempt.getEvents()));
+                cmd.addParameter(dialect.headers(), SerializationExtensions.serialize(serializer, attempt.getHeaders()));
+                cmd.addParameter(dialect.payload(), SerializationExtensions.serialize(serializer, attempt.getEvents()));
                 return cmd.executeNonQuery(dialect.persistCommit());
             }
         });
@@ -213,168 +240,197 @@ public class SqlPersistenceEngine implements IPersistStreams {
     }
 
     @Override
-    public IEnumerable<Commit> getUndispatchedCommits() {
+    public Iterable<Commit> getUndispatchedCommits() {
         logger.debug(Messages.gettingUndispatchedCommits());
-        return this.executeQuery(Guid.empty(), new QueryDelegate<Commit>() {
+        Iterable<IDataRecord> records = this.executeQuery(Consts.EMPTY_UUID, new QueryDelegate<IDataRecord>() {
 
             @Override
-            public IEnumerable<Commit> execute(IDbStatement query) {
-                query.executePagedQuery(this.dialect.getUndispatchedCommits(), (q, r) => { }))
-					.Select(x => x.GetCommit(this.serializer))
-					.ToArray(); // avoid paging
+            public Iterable<IDataRecord> execute(IDbStatement query) {
+                return query.executePagedQuery(dialect.getUndispatchedCommits(), new NextPageDelegate() {
+
+                    @Override
+                    public void nextPage(IDbCommand command, IDataRecord current) {
+                        // Nothing to do
+                    }
+                });
             }
         });
+        List<Commit> commits = new LinkedList<Commit>();
+        for(IDataRecord record : records) {
+            commits.add(CommitExtensions.getCommit(record, serializer));
+        }        
+        return commits;
     }
                 
     @Override
-    public void markCommitAsDispatched(Commit commit) {
-			Logger.Debug(Messages.MarkingCommitAsDispatched, commit.CommitId);
-			this.ExecuteCommand(commit.StreamId, cmd =>
-			{
-				cmd.AddParameter(this.dialect.StreamId, commit.StreamId);
-				cmd.AddParameter(this.dialect.CommitSequence, commit.CommitSequence);
-				return cmd.ExecuteWithoutExceptions(this.dialect.MarkCommitAsDispatched);
-			});
-    }
-
-    public IEnumerable<StreamHead> getStreamsToSnapshot(int maxThreshold) {
-			logger.debug(Messages.gettingStreamsToSnapshot());
-			return this.ExecuteQuery(Guid.Empty, query =>
-			{
-				var statement = this.dialect.GetStreamsRequiringSnapshots;
-				query.AddParameter(this.dialect.StreamId, Guid.Empty);
-				query.AddParameter(this.dialect.Threshold, maxThreshold);
-				return query.ExecutePagedQuery(statement,
-						(q, s) => q.SetParameter(this.dialect.StreamId, this.dialect.CoalesceParameterValue(s.StreamId())))
-					.Select(x => x.GetStreamToSnapshot());
-			});
-    }
-                
-    public Snapshot getSnapshot(Guid streamId, int maxRevision) {
-			Logger.Debug(Messages.GettingRevision, streamId, maxRevision);
-			return this.ExecuteQuery(streamId, query =>
-			{
-				var statement = this.dialect.GetSnapshot;
-				query.AddParameter(this.dialect.StreamId, streamId);
-				query.AddParameter(this.dialect.StreamRevision, maxRevision);
-				return query.ExecuteWithQuery(statement).Select(x => x.GetSnapshot(this.serializer));
-			}).FirstOrDefault();
-    }
-                
-    public boolean addSnapshot(Snapshot snapshot) {
-			logger.debug(Messages.addingSnapshot(), snapshot.StreamId, snapshot.StreamRevision);
-			return this.ExecuteCommand(snapshot.StreamId, cmd =>
-			{
-				cmd.AddParameter(this.dialect.StreamId, snapshot.StreamId);
-				cmd.AddParameter(this.dialect.StreamRevision, snapshot.StreamRevision);
-				cmd.AddParameter(this.dialect.Payload, this.serializer.Serialize(snapshot.Payload));
-				return cmd.ExecuteWithoutExceptions(this.dialect.AppendSnapshotToCommit);
-			}) > 0;
-    }
-
-    public void purge() {
-        logger.warn(Messages.purgingStorage());
-        this.executeCommand(Guid.empty(), new QueryDelegate() {
+    public void markCommitAsDispatched(final Commit commit) {
+        logger.debug(Messages.markingCommitAsDispatched(), commit.getCommitId());
+        this.executeCommand(commit.getStreamId(), new CommandDelegate() {
 
             @Override
-            public IEnumerable execute(IDbStatement query) {
-                return executeNonQuery(dialect.purgeStorage());
-                //throw new UnsupportedOperationException("Not supported yet.");
+            public Object execute(IDbStatement cmd) {
+                cmd.addParameter(dialect.streamId(), commit.getStreamId());
+                cmd.addParameter(dialect.commitSequence(), commit.getCommitSequence());
+                return cmd.executeWithoutExceptions(dialect.markCommitAsDispatched());
             }
         });
-        
-				this.executeNonQuery(this.dialect.purgeStorage());
+ 
     }
 
-  //protected IEnumerable<T> ExecuteQuery<T>(Guid streamId, Func<IDbStatement, IEnumerable<T>> query) {
-    protected <T> Iterable<T> executeQuery(Guid streamId, QueryDelegate query) {
-                    
-			this.ThrowWhenDisposed();
+    @Override
+    public Iterable<StreamHead> getStreamsToSnapshot(final int maxThreshold) {
+        logger.debug(Messages.gettingStreamsToSnapshot());
+        Iterable<IDataRecord> records = this.executeQuery(Consts.EMPTY_UUID, new QueryDelegate<IDataRecord>() {
 
-			var scope = this.OpenQueryScope();
-			IDbConnection connection = null;
-			IDbTransaction transaction = null;
-			IDbStatement statement = null;
+            @Override
+            public Iterable<IDataRecord> execute(IDbStatement query) {
+                String statement = dialect.getStreamsRequiringSnapshots();
+                query.addParameter(dialect.streamId(), Consts.EMPTY_UUID);
+                query.addParameter(dialect.threshold(), maxThreshold);
+                return query.executePagedQuery(statement, new NextPageDelegate() {
 
-			try
-			{
-				connection = this.connectionFactory.OpenReplica(streamId);
-				transaction = this.dialect.OpenTransaction(connection);
-				statement = this.dialect.BuildStatement(scope, connection, transaction);
-				statement.PageSize = this.pageSize;
-
-				Logger.Verbose(Messages.ExecutingQuery);
-				return query(statement);
-			}
-			catch (Exception e)
-			{
-				if (statement != null)
-					statement.Dispose();
-				if (transaction != null)
-					transaction.Dispose();
-				if (connection != null)
-					connection.Dispose();
-				if (scope != null)
-					scope.Dispose();
-
-				Logger.Debug(Messages.StorageThrewException, e.GetType());
-				if (e is StorageUnavailableException)
-					throw;
-
-				throw new StorageException(e.Message, e);
-			}
+                    @Override
+                    public void nextPage(IDbCommand query, IDataRecord record) {
+                        ExtensionMethods.setParameter(query, dialect.streamId(), dialect.coalesceParameterValue(CommitExtensions.streamId(record)));
+                    }
+                });
+            }
+        });
+        //.Select(x => x.GetStreamToSnapshot());
+        List<StreamHead> heads = new LinkedList<StreamHead>();
+        for(IDataRecord record : records) {
+            heads.add(StreamHeadExtensions.getStreamToSnapshot(record));
+        }        
+        return heads;        
     }
     
-    protected TransactionScope openQueryScope() {
-        return this.openCommandScope() ?? new TransactionScope(TransactionScopeOption.Suppress);
+    @Override
+    public Snapshot getSnapshot(final UUID streamId, final int maxRevision) {
+        logger.debug(Messages.gettingRevision(), streamId, maxRevision);
+        Iterable<IDataRecord> records = this.executeQuery(streamId, new QueryDelegate() {
+
+            @Override
+            public Iterable execute(IDbStatement query) {
+                String statement = dialect.getSnapshot();
+                query.addParameter(dialect.streamId(),       streamId);
+                query.addParameter(dialect.streamRevision(), maxRevision);
+                return query.executeWithQuery(statement);
+            }
+        });
+        //.Select(x => x.GetSnapshot(this.serializer));
+        Snapshot snapshot = null;
+        for(IDataRecord record : records) {
+            snapshot = SnapshotExtensions.getSnapshot(record, this.serializer);
+            break;
+        }
+        return snapshot;
     }
                 
-    private void ThrowWhenDisposed() {
+    @Override
+    public boolean addSnapshot(final Snapshot snapshot) {
+        logger.debug(Messages.addingSnapshot(), snapshot.getStreamId(), snapshot.getStreamRevision());
+        int count = this.executeCommand(snapshot.getStreamId(), new CommandDelegate<Integer>() {
+
+            @Override
+            public Integer execute(IDbStatement cmd) {
+                cmd.addParameter(dialect.streamId(),       snapshot.getStreamId());
+                cmd.addParameter(dialect.streamRevision(), snapshot.getStreamRevision());
+                cmd.addParameter(dialect.payload(), SerializationExtensions.serialize(serializer, snapshot.getPayload()));
+                return cmd.executeWithoutExceptions(dialect.appendSnapshotToCommit());
+            }
+        });
+        return count > 0;
+    }
+    
+    @Override
+    public void purge() {
+        logger.warn(Messages.purgingStorage());
+        this.executeCommand(Consts.EMPTY_UUID, new CommandDelegate<IDataRecord>() {
+
+            @Override
+            public IDataRecord execute(IDbStatement cmd) {
+                cmd.executeNonQuery(dialect.purgeStorage());
+                return null;
+            }
+        });
+    }
+
+    protected <T> Iterable<T> executeQuery(UUID streamId, QueryDelegate query) {
+        this.throwWhenDisposed();
+        
+        try(TransactionScope scope       = this.openQueryScope();
+            IDbConnection    connection  = this.connectionFactory.openReplica(streamId);
+            IDbTransaction   transaction = this.dialect.openTransaction(connection);
+            IDbStatement     statement   = this.dialect.buildStatement(scope, connection, transaction)) 
+        {
+            statement.setPageSize(this.pageSize);
+
+            logger.verbose(Messages.executingQuery());
+            return query.execute(statement);
+        } 
+        catch (Exception e) {
+            logger.debug(Messages.storageThrewException(), e.getClass().getName());
+            if (e instanceof StorageUnavailableException) {
+                throw new StorageUnavailableException();
+            }
+            throw new StorageException(e.getMessage(), e);
+        }
+    }
+
+    protected TransactionScope openQueryScope() {
+        TransactionScope scope = this.openCommandScope();
+        return scope!=null? scope : new TransactionScope(TransactionScopeOption.Suppress);
+    }
+                
+    private void throwWhenDisposed() {
         if (!this.disposed) {
             return;
         }
-
         logger.warn(Messages.alreadyDisposed());
         throw new ObjectDisposedException(Messages.alreadyDisposed());
     }
-
+ 
     //protected <T> T executeCommand(Guid streamId, Func<IDbStatement, T> command) {
-    protected <T> T executeCommand(Guid streamId, CommandDelegate<T> command) {
-    
-			this.throwWhenDisposed();
+    protected <T> T executeCommand(UUID streamId, CommandDelegate<T> command) {
+        this.throwWhenDisposed();
 
-			using (var scope = this.OpenCommandScope())
-			using (var connection = this.connectionFactory.OpenMaster(streamId))
-			using (var transaction = this.dialect.OpenTransaction(connection))
-			using (var statement = this.dialect.BuildStatement(scope, connection, transaction))
-			{
-				try
-				{
-					Logger.Verbose(Messages.ExecutingCommand);
-					var rowsAffected = command(statement);
-					Logger.Verbose(Messages.CommandExecuted, rowsAffected);
+        TransactionScope   scope = this.openCommandScope();
+	try (IDbConnection  connection = this.connectionFactory.openMaster(streamId);
+             IDbTransaction transaction = this.dialect.openTransaction(connection);
+             IDbStatement   statement   = this.dialect.buildStatement(scope, connection, transaction) ) 
+        {
+            T rowsAffected;
+            synchronized(scope) {
+                synchronized(connection) {
+                    synchronized(transaction) {
+                        synchronized(statement) {
+                            logger.verbose(Messages.executingCommand());
+                            rowsAffected = command.execute(statement);
+                            logger.verbose(Messages.commandExecuted(), rowsAffected);
 
-					if (transaction != null)
-						transaction.Commit();
-
-					if (scope != null)
-						scope.Complete();
-
-					return rowsAffected;
-				}
-				catch (Exception e)
-				{
-					Logger.Debug(Messages.StorageThrewException, e.GetType());
-					if (!RecoverableException(e))
-						throw new StorageException(e.Message, e);
-
-					Logger.Info(Messages.RecoverableExceptionCompletesScope);
-					if (scope != null)
-						scope.Complete();
-
-					throw;
-				}
-			}
+                            if (transaction != null) {
+                                transaction.commit();
+                            }
+                            if (scope != null) {
+                                scope.complete();
+                            }
+                        }
+                    }
+                }
+            }
+            return rowsAffected;
+        } 
+        catch (Exception e) {
+            logger.debug(Messages.storageThrewException(), e.getClass().getName());
+            if (!recoverableException(e)) {
+                throw new StorageException(e.getMessage(), e);
+            }
+            logger.info(Messages.recoverableExceptionCompletesScope());
+            if (scope != null) {
+                scope.complete();
+            }
+            throw new RuntimeException(e);
+        }
     }
                 
     protected TransactionScope openCommandScope() {
@@ -385,13 +441,20 @@ public class SqlPersistenceEngine implements IPersistStreams {
         return e.getClass().equals(UniqueKeyViolationException.class) || 
                e.getClass().equals(StorageUnavailableException.class);
     }
+    
+    private int countof(List<?> objects) {
+        int count = 0;
+        for(Object object : objects) {
+            count++;
+        }
+        return count;
+    }
 
     private abstract class QueryDelegate<T> {
         public abstract Iterable<T> execute(IDbStatement query);
     }
 
     private abstract class CommandDelegate<T> {
-        public abstract T  execute(IDbStatement statement);
+        public abstract T  execute(IDbStatement command);
     }
-
 }

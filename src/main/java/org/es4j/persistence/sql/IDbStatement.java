@@ -22,5 +22,5 @@ public interface IDbStatement extends IDisposable {
     void setPageSize(int pageSize);
 
     Iterable<IDataRecord> executeWithQuery(String queryText);
-    Iterable<IDataRecord> executePagedQuery(String queryText, NextPageDelegate nextpage);
+    Iterable<IDataRecord> executePagedQuery(String queryText, NextPageDelegate delegate);
 }
