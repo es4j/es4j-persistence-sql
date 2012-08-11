@@ -1,7 +1,7 @@
 package org.es4j.persistence.sql;
 
 import org.es4j.dotnet.SerializationInfo;
-import org.es4j.dotnet.StreamingContext;
+import org.es4j.dotnet.streams.StreamingContext;
 
 //namespace EventStore.Persistence.SqlPersistence
 //using System;
@@ -12,6 +12,7 @@ import org.es4j.dotnet.StreamingContext;
 /// Indicates that a unique constraint or duplicate key violation occurred.
 /// </summary>
 //[Serializable]
+@SuppressWarnings("serial")
 public class UniqueKeyViolationException extends RuntimeException {
 
     /// <summary>
